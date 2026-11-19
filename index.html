@@ -4,93 +4,349 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ALVES VOICE</title>
+<title>ALVES VOICE CORE</title>
+
 <style>
+* { box-sizing: border-box; }
+
 body {
   margin: 0;
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: #080d18;
+  background:
+    radial-gradient(ellipse at center, #10283b 0%, #080d18 65%);
   color: #e8faff;
   font-family: Arial, sans-serif;
   text-align: center;
 }
-main { padding: 25px; }
+
+main {
+  width: min(92%, 480px);
+  padding: 30px 22px;
+  border: 1px solid #124b65;
+  border-radius: 24px;
+  background: rgba(5, 18, 32, .88);
+  box-shadow: 0 0 45px #00bfff18;
+}
+
+h1 {
+  color: #00d9ff;
+  letter-spacing: 5px;
+  text-shadow: 0 0 18px #00d9ff88;
+}
+
+.subtitle {
+  color: #8caeba;
+  font-size: 13px;
+  letter-spacing: 2px;
+}
+
+.core {
+  width: 150px;
+  height: 150px;
+  margin: 30px auto;
+  border: 2px solid #00d9ff;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #00d9ff;
+  font-size: 48px;
+  box-shadow: 0 0 25px #00d9ff33, inset 0 0 25px #00d9ff22;
+  transition: .3s;
+}
+
+.core.active {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%,100% { transform: scale(1); box-shadow: 0 0 20px #00d9ff55; }
+  50% { transform: scale(1.08); box-shadow: 0 0 55px #00d9ffbb; }
+}
+
 button {
-  padding: 16px 25px;
+  padding: 14px 19px;
+  margin: 6px;
   border: 1px solid #00d9ff;
   border-radius: 30px;
   background: #062337;
   color: white;
-  font-size: 17px;
+  font-size: 14px;
   cursor: pointer;
 }
-#status { color: #00d9ff; margin: 20px; }
-#result { max-width: 500px; line-height: 1.6; }
+
+button.selected {
+  background: #007b9d;
+  box-shadow: 0 0 15px #00d9ff55;
+}
+
+button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+#status {
+  margin: 20px 0 10px;
+  color: #00d9ff;
+  font-weight: bold;
+}
+
+#result {
+  min-height: 45px;
+  color: #d0e8ef;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+#modeInfo {
+  color: #8caeba;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+#connection {
+  margin-top: 20px;
+  color: #668c9b;
+  font-size: 11px;
+}
 </style>
 </head>
+
 <body>
 <main>
-  <h1>ALVES VOICE</h1>
-  <p>Ücretsiz ses bağlantısı</p>
-  <button id="mic">🎙 Mikrofonu Aç</button>
-  <div id="status">Hazır</div>
-  <p id="result">Konuşman burada görünecek.</p>
+
+  <h1>ALVES</h1>
+  <div class="subtitle">VOICE CORE V2</div>
+
+  <div class="core" id="core">◉</div>
+
+  <div>
+    <button id="wakeMode" class="selected">ALVES UYANDIRMA</button>
+    <button id="chatMode">SÜREKLİ SOHBET</button>
+  </div>
+
+  <p id="modeInfo">
+    "ALVES" de, ardından komutunu söyle.
+  </p>
+
+  <div>
+    <button id="start">🎙 MİKROFONU AÇ</button>
+    <button id="stop" disabled>■ DURDUR</button>
+  </div>
+
+  <div id="status">Sistem hazır.</div>
+  <p id="result">Seni dinlemeye hazırım.</p>
+
+  <div id="connection">ALVES VOICE CORE • CONNECTION READY</div>
+
 </main>
+
 <script>
 const status = document.getElementById("status");
 const result = document.getElementById("result");
-const mic = document.getElementById("mic");
+const core = document.getElementById("core");
+
+const startBtn = document.getElementById("start");
+const stopBtn = document.getElementById("stop");
+const wakeBtn = document.getElementById("wakeMode");
+const chatBtn = document.getElementById("chatMode");
+const modeInfo = document.getElementById("modeInfo");
 
 const SpeechRecognition =
-  window.SpeechRecognition || window.webkitSpeechRecognition;
+  window.SpeechRecognition ||
+  window.webkitSpeechRecognition;
 
-mic.addEventListener("click", () => {
-  if (!SpeechRecognition) {
-    status.textContent = "Bu tarayıcı ses tanımayı desteklemiyor.";
-    return;
+let active = false;
+let mode = "wake";
+let awaitingCommand = false;
+let recognition = null;
+let restarting = false;
+
+function setStatus(message) {
+  status.textContent = message;
+}
+
+function setMode(newMode) {
+  mode = newMode;
+  awaitingCommand = false;
+
+  wakeBtn.classList.toggle("selected", mode === "wake");
+  chatBtn.classList.toggle("selected", mode === "chat");
+
+  modeInfo.textContent =
+    mode === "wake"
+      ? '"ALVES" de, ardından komutunu söyle.'
+      : "Konuşmaya başla. Söylediklerin doğrudan ALVES'e gönderilecek.";
+
+  setStatus(
+    mode === "wake"
+      ? "Uyandırma modu hazır."
+      : "Sürekli sohbet modu hazır."
+  );
+}
+
+wakeBtn.addEventListener("click", () => setMode("wake"));
+chatBtn.addEventListener("click", () => setMode("chat"));
+
+function sendToAlves(command) {
+  command = command.trim();
+  if (!command) return;
+
+  if (window.opener && !window.opener.closed) {
+    window.opener.postMessage({
+      type: "ALVES_VOICE_COMMAND",
+      text: command
+    }, "*");
+
+    result.textContent = command;
+    setStatus("KOMUT ALVES'E GÖNDERİLDİ.");
+  } else {
+    setStatus("ALVES ANA PENCERESİ AÇIK DEĞİL.");
   }
 
-  const recognition = new SpeechRecognition();
-  recognition.lang = "tr-TR";
-  recognition.continuous = false;
-  recognition.interimResults = true;
+  awaitingCommand = false;
+}
 
-  recognition.onstart = () => status.textContent = "Dinliyorum...";
-  recognition.onresult = event => {
-  let text = "";
-
-  for (let i = event.resultIndex; i < event.results.length; i++) {
-    text += event.results[i][0].transcript;
-  }
+function handleTranscript(transcript) {
+  const text = transcript.trim();
+  if (!text) return;
 
   result.textContent = text;
 
-  const finalResult = event.results[event.results.length - 1];
-
-  if (finalResult && finalResult.isFinal && text.trim()) {
-    const command = text.trim();
-
-    if (window.opener && !window.opener.closed) {
-      window.opener.postMessage({
-        type: "ALVES_VOICE_COMMAND",
-        text: command
-      }, "*");
-
-      status.textContent = "ALVES'E KOMUT GÖNDERİLDİ.";
-    } else {
-      status.textContent = "ALVES penceresi açık değil.";
-    }
+  if (mode === "chat") {
+    sendToAlves(text);
+    return;
   }
-};
-  recognition.onerror = event => {
-    status.textContent = "Ses hatası: " + event.error;
+
+  const normalized = text.toLocaleLowerCase("tr-TR");
+  const wakePattern = /\balves\b/i;
+  const match = wakePattern.exec(normalized);
+
+  if (match) {
+    const command = text.slice(match.index + match[0].length).trim();
+
+    if (command) {
+      sendToAlves(command);
+    } else {
+      awaitingCommand = true;
+      setStatus("ALVES UYANDI. KOMUTUNU BEKLİYORUM.");
+    }
+
+    return;
+  }
+
+  if (awaitingCommand) {
+    sendToAlves(text);
+  }
+}
+
+function startRecognition() {
+  if (!active || restarting) return;
+
+  if (!SpeechRecognition) {
+    active = false;
+    setStatus("BU TARAYICI SES TANIMAYI DESTEKLEMİYOR.");
+    return;
+  }
+
+  restarting = true;
+
+  recognition = new SpeechRecognition();
+  recognition.lang = "tr-TR";
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => {
+    restarting = false;
+    core.classList.add("active");
+    setStatus(
+      mode === "wake"
+        ? "ALVES KELİMESİNİ DİNLİYORUM..."
+        : "SÜREKLİ SOHBET AKTİF..."
+    );
   };
-  recognition.onend = () => status.textContent = "Dinleme tamamlandı.";
-  recognition.start();
+
+  recognition.onresult = event => {
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        handleTranscript(event.results[i][0].transcript);
+      }
+    }
+  };
+
+  recognition.onerror = event => {
+    if (event.error === "not-allowed" ||
+        event.error === "service-not-allowed") {
+      active = false;
+      restarting = false;
+      core.classList.remove("active");
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      setStatus("MİKROFON İZNİ GEREKLİ.");
+      return;
+    }
+
+    if (event.error !== "no-speech" &&
+        event.error !== "aborted") {
+      setStatus("SES HATASI: " + event.error);
+    }
+  };
+
+  recognition.onend = () => {
+    restarting = false;
+
+    if (active) {
+      setTimeout(() => {
+        if (active) startRecognition();
+      }, 350);
+    } else {
+      core.classList.remove("active");
+    }
+  };
+
+  try {
+    recognition.start();
+  } catch (error) {
+    restarting = false;
+    setStatus("MİKROFON BAŞLATILAMADI: " + error.message);
+  }
+}
+
+startBtn.addEventListener("click", () => {
+  if (active) return;
+
+  if (!SpeechRecognition) {
+    setStatus("TARAYICI SES TANIMAYI DESTEKLEMİYOR.");
+    return;
+  }
+
+  active = true;
+  awaitingCommand = false;
+
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+
+  startRecognition();
+});
+
+stopBtn.addEventListener("click", () => {
+  active = false;
+  awaitingCommand = false;
+  restarting = false;
+
+  if (recognition) {
+    recognition.onend = null;
+    recognition.stop();
+  }
+
+  core.classList.remove("active");
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+
+  setStatus("MİKROFON KAPATILDI.");
 });
 </script>
 </body>
 </html>
- 
