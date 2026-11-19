@@ -59,12 +59,31 @@ mic.addEventListener("click", () => {
 
   recognition.onstart = () => status.textContent = "Dinliyorum...";
   recognition.onresult = event => {
-    let text = "";
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      text += event.results[i][0].transcript;
+  let text = "";
+
+  for (let i = event.resultIndex; i < event.results.length; i++) {
+    text += event.results[i][0].transcript;
+  }
+
+  result.textContent = text;
+
+  const finalResult = event.results[event.results.length - 1];
+
+  if (finalResult && finalResult.isFinal && text.trim()) {
+    const command = text.trim();
+
+    if (window.opener && !window.opener.closed) {
+      window.opener.postMessage({
+        type: "ALVES_VOICE_COMMAND",
+        text: command
+      }, "*");
+
+      status.textContent = "ALVES'E KOMUT GÖNDERİLDİ.";
+    } else {
+      status.textContent = "ALVES penceresi açık değil.";
     }
-    result.textContent = text;
-  };
+  }
+};
   recognition.onerror = event => {
     status.textContent = "Ses hatası: " + event.error;
   };
