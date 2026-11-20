@@ -268,31 +268,50 @@ function startRecognition() {
     );
   };
 
-  recognition.onresult = event => {
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      if (event.results[i].isFinal) {
-        handleTranscript(event.results[i][0].transcript);
-      }
-    }
-  };
 
-  recognition.onerror = event => {
-    if (event.error === "not-allowed" ||
-        event.error === "service-not-allowed") {
-      active = false;
-      restarting = false;
-      core.classList.remove("active");
-      startBtn.disabled = false;
-      stopBtn.disabled = true;
-      setStatus("MİKROFON İZNİ GEREKLİ.");
-      return;
-    }
+recognition.onresult = event => {
+  let interimText = "";
+  let finalText = "";
 
-    if (event.error !== "no-speech" &&
-        event.error !== "aborted") {
-      setStatus("SES HATASI: " + event.error);
+  for (let i = event.resultIndex; i < event.results.length; i++) {
+    const transcript = event.results[i][0].transcript;
+
+    if (event.results[i].isFinal) {
+      finalText += transcript;
+    } else {
+      interimText += transcript;
     }
-  };
+  }
+
+  if (interimText) {
+    result.textContent = "DUYUYORUM: " + interimText;
+    setStatus("KONUŞMAN ALGILANIYOR...");
+  }
+
+  if (finalText.trim()) {
+    result.textContent = "ALGILANDI: " + finalText;
+    handleTranscript(finalText);
+  }
+};
+
+recognition.onnomatch = () => {
+  setStatus("KONUŞMA ANLAŞILAMADI. TEKRAR DENE.");
+};
+
+recognition.onerror = event => {
+  setStatus("SES HATASI: " + event.error);
+  log;
+  if (
+    event.error === "not-allowed" ||
+    event.error === "service-not-allowed"
+  ) {
+    active = false;
+    restarting = false;
+    core.classList.remove("active");
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+  }
+};
 
   recognition.onend = () => {
     restarting = false;
